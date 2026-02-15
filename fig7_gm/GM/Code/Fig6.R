@@ -2,12 +2,20 @@
 rm(list = ls())
 gc()
 
+# Set working directory to GM root (script_dir/..), avoid absolute paths.
+cmd <- commandArgs(trailingOnly = FALSE)
+file_arg <- cmd[grepl("^--file=", cmd)]
+if (length(file_arg) > 0) {
+  script_path <- sub("^--file=", "", file_arg[1])
+  script_dir <- normalizePath(dirname(script_path), winslash = "/", mustWork = FALSE)
+  gm_root <- normalizePath(file.path(script_dir, ".."), winslash = "/", mustWork = FALSE)
+  setwd(gm_root)
+}
+
 ####== 1. 加载库 ==####
 library(dplyr); library(ggsci); library(ComplexHeatmap); library(circlize); library(stringr)
 
 ####== 2. 加载数据并预处理 ==####
-# 请确保这里的路径是正确的
-setwd("E:/data/changyuan/免疫队列/fig7/GM/") 
 load('data/CRISPR/crispr.Rdata')
 
 ####== 3. 数据处理 ==####

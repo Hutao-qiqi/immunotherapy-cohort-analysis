@@ -8,9 +8,12 @@ import seaborn as sns
 import os
 from gseapy import Msigdb
 import re
+from pathlib import Path
 
-# 设置工作目录
-os.chdir("E:/data/changyuan/免疫队列/单基因生存分析")
+# Use script directory as base; avoid absolute paths.
+BASE_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = BASE_DIR / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # 检查可用的基因集
 def check_available_gene_sets():
@@ -156,7 +159,7 @@ if go_bp.results is not None and not go_bp.results.empty:
             top_term=20,
             figsize=(12, 8))
     plt.tight_layout()
-    plt.savefig('GO_enrichment.png', dpi=300, bbox_inches='tight')
+    plt.savefig(OUTPUT_DIR / 'GO_enrichment.png', dpi=300, bbox_inches='tight')
     plt.close()
 
 # KEGG通路富集
@@ -168,7 +171,7 @@ if kegg.results is not None and not kegg.results.empty:
             top_term=20,
             figsize=(12, 8))
     plt.tight_layout()
-    plt.savefig('KEGG_enrichment.png', dpi=300, bbox_inches='tight')
+    plt.savefig(OUTPUT_DIR / 'KEGG_enrichment.png', dpi=300, bbox_inches='tight')
     plt.close()
 
 # 免疫治疗相关基因集富集
@@ -180,21 +183,21 @@ if immune_enrich.results is not None and not immune_enrich.results.empty:
             top_term=20,
             figsize=(12, 8))
     plt.tight_layout()
-    plt.savefig('Immune_enrichment.png', dpi=300, bbox_inches='tight')
+    plt.savefig(OUTPUT_DIR / 'Immune_enrichment.png', dpi=300, bbox_inches='tight')
     plt.close()
 
 # 保存结果到CSV文件
 print("\n保存富集分析结果...")
 if go_bp.results is not None:
-    go_bp.results.to_csv("GO_enrichment_results.csv", index=False)
+    go_bp.results.to_csv(OUTPUT_DIR / "GO_enrichment_results.csv", index=False)
     print(f"GO富集分析结果已保存 (共{len(go_bp.results)}个条目)")
 
 if kegg.results is not None:
-    kegg.results.to_csv("KEGG_enrichment_results.csv", index=False)
+    kegg.results.to_csv(OUTPUT_DIR / "KEGG_enrichment_results.csv", index=False)
     print(f"KEGG富集分析结果已保存 (共{len(kegg.results)}个条目)")
 
 if immune_enrich.results is not None:
-    immune_enrich.results.to_csv("Immune_enrichment_results.csv", index=False)
+    immune_enrich.results.to_csv(OUTPUT_DIR / "Immune_enrichment_results.csv", index=False)
     print(f"免疫富集分析结果已保存 (共{len(immune_enrich.results)}个条目)")
     print(f"使用的基因集: {successful_geneset}")
 else:
@@ -251,7 +254,7 @@ else:
     print("未找到显著富集的免疫相关基因")
 
 # 保存免疫治疗基因结果
-immune_summary.to_csv("immunotherapy_genes.csv", index=False)
+immune_summary.to_csv(OUTPUT_DIR / "immunotherapy_genes.csv", index=False)
 print("\n免疫治疗基因结果已保存到 immunotherapy_genes.csv")
 
 # 9. 高级可视化 - 基因-通路网络 (修正缩进)
@@ -297,7 +300,7 @@ if not immune_summary.empty:
     plt.title("Gene-Pathway Network in Cancer Immunotherapy")
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig('gene_pathway_network.png', dpi=300, bbox_inches='tight')
+    plt.savefig(OUTPUT_DIR / 'gene_pathway_network.png', dpi=300, bbox_inches='tight')
     plt.close()
     print("网络图已保存为 gene_pathway_network.png")
 else:

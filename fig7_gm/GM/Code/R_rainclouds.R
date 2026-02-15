@@ -6,8 +6,15 @@
 
 # Check if required packages are installed ----
 packages <- c("cowplot", "readr", "ggplot2", "dplyr", "lavaan", "smooth", "Hmisc")
-if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
-  install.packages(setdiff(packages, rownames(installed.packages())))
+missing <- setdiff(packages, rownames(installed.packages()))
+if (length(missing) > 0) {
+  stop(
+    sprintf(
+      "Missing R packages: %s\nInstall them first, e.g. install.packages(c(%s))",
+      paste(missing, collapse = ", "),
+      paste(sprintf("'%s'", missing), collapse = ", ")
+    )
+  )
 }
 
 # Load packages ----

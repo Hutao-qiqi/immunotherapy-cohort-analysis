@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-单基因生存分析 - 最终修复版
-对MYC_PVT1高低表达组中的所有基因进行Cox回归分析，计算HR值并绘制风险比曲线图
+Single-gene survival analysis.
+
+Runs Cox regression for each gene within MYC_PVT1 status groups (hi_hi / lo_lo),
+and exports per-group results.
 """
 
 import pandas as pd
@@ -15,12 +17,11 @@ from lifelines import CoxPHFitter
 from lifelines.statistics import logrank_test
 import warnings
 warnings.filterwarnings('ignore')
-import os
+import argparse
+from pathlib import Path
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
-# 切换到指定目录（支持绝对路径或相对路径）
-os.chdir("E:/data/changyuan/免疫队列/单基因生存分析")
 # 设置matplotlib的字体和样式
 plt.rcParams['font.size'] = 12
 plt.rcParams['font.family'] = 'Arial'
@@ -32,15 +33,61 @@ plt.rcParams['ytick.major.size'] = 6
 plt.rcParams['xtick.major.width'] = 1.5
 plt.rcParams['ytick.major.width'] = 1.5
 
-def load_and_prepare_data():
+
+def _default_base_dir() -> Path:
+    return Path(__file__).resolve().parent
+
+
+def _default_survival_file(base_dir: Path) -> Path:
+    # Prefer survival_curves/ if present in this repo layout
+    candidate = (base_dir / ".." / "survival_curves" / "updated_survival_data.txt").resolve()
+    return candidate
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Single-gene Cox survival analysis (hi_hi / lo_lo)")
+    parser.add_argument(
+        "--base-dir",
+        type=Path,
+        default=_default_base_dir(),
+        help="Directory containing combined_expression_combat_corrected.txt and MYC_PVT1_annotation.txt",
+    )
+    parser.add_argument(
+        "--survival-file",
+        type=Path,
+        default=None,
+        help="Path to updated_survival_data.txt (default: ../survival_curves/updated_survival_data.txt)",
+    )
+    parser.add_argument(
+        "--strategy",
+        type=str,
+        default="median_rank",
+        choices=["median", "median_rank", "quartiles"],
+        help="Expression grouping strategy",
+    )
+    parser.add_argument(
+        "--n-jobs",
+        type=int,
+        default=0,
+        help="Parallel jobs (0 = use a safe default)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=_default_base_dir() / "outputs",
+        help="Output directory for result tables",
+    )
+    return parser.parse_args()
+
+def load_and_prepare_data(base_dir: Path, survival_file: Path):
     """
     加载并准备数据，确保样本ID匹配
     """
     print("正在加载数据并检查样本ID匹配...")
-    
-        # 1. 加载表达数据  
+
+    # 1. 加载表达数据
     try:
-        expression_data = pd.read_csv('combined_expression_combat_corrected.txt', sep='\t', index_col=0)
+        expression_data = pd.read_csv(base_dir / 'combined_expression_combat_corrected.txt', sep='\t', index_col=0)
         print(f"✓ 表达数据加载成功: {expression_data.shape}")
     except FileNotFoundError:
         print("❌ 未找到表达数据文件")
@@ -48,7 +95,7 @@ def load_and_prepare_data():
     
     # 2. 加载分组信息
     try:
-        annotation_df = pd.read_csv('MYC_PVT1_annotation.txt', sep='\t')
+        annotation_df = pd.read_csv(base_dir / 'MYC_PVT1_annotation.txt', sep='\t')
         group_info = pd.Series(annotation_df['MYC_PVT1_Status'].values, 
                               index=annotation_df['Sample'].values)
         print(f"✓ 分组信息加载成功: {len(group_info)} 个样本")
@@ -59,10 +106,11 @@ def load_and_prepare_data():
     
     # 3. 加载生存数据
     try:
-        survival_data = pd.read_csv('../生存曲线/updated_survival_data.txt', sep='\s+', engine='python')
+        survival_data = pd.read_csv(survival_file, sep='\s+', engine='python')
         survival_data = survival_data.set_index('Sample_ID')
         print(f"✓ 生存数据加载成功: {len(survival_data)} 个样本")
-        print(f"  数据集分布: {survival_data['Dataset'].value_counts().to_dict()}")
+        if 'Dataset' in survival_data.columns:
+            print(f"  数据集分布: {survival_data['Dataset'].value_counts().to_dict()}")
     except FileNotFoundError:
         print("❌ 未找到生存数据文件")
         return None, None, None
@@ -210,66 +258,75 @@ def main():
     """
     主函数 (仅执行分析)
     """
+    args = parse_args()
+    base_dir = args.base_dir.resolve()
+    survival_file = (args.survival_file.resolve() if args.survival_file else _default_survival_file(base_dir))
+    output_dir = args.output_dir.resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     print("=" * 60)
     print("单基因生存分析 - V4 (仅分析)")
     print("=" * 60)
-    
-    strategy = 'median_rank'
+
+    strategy = args.strategy
     
     # 1. 加载和准备数据 (只需加载一次)
     print("\n1. 加载和准备数据...")
-    expression_data, group_info, survival_data = load_and_prepare_data()
+    expression_data, group_info, survival_data = load_and_prepare_data(base_dir=base_dir, survival_file=survival_file)
     
     if expression_data is None:
         print("❌ 数据加载失败，程序退出")
         return
 
-        print("\n" + "="*60)
-        print(f"开始执行策略: {strategy}")
-        print("="*60)
+    print("\n" + "=" * 60)
+    print(f"开始执行策略: {strategy}")
+    print("=" * 60)
 
-        # 2. 进行单基因Cox分析
-        n_cores = 15
-        print(f"\n2. 使用 {n_cores} 个CPU核心并行进行单基因Cox分析 (策略: {strategy})...")
-        
-        genes_to_analyze = expression_data.index[:]
-        
-        results = Parallel(n_jobs=n_cores)(
-            delayed(perform_cox_analysis)(expression_data, survival_data, gene, group_info, strategy)
-            for gene in tqdm(genes_to_analyze, desc=f"分析进度 ({strategy})")
-        )
-        
-        # 处理结果
-        results_hi_hi, results_lo_lo = {}, {}
-        for gene, (result_hi, result_lo) in zip(genes_to_analyze, results):
-            if result_hi: results_hi_hi[gene] = result_hi
-            if result_lo: results_lo_lo[gene] = result_lo
-        
-        print(f"\n分析完成 (策略: {strategy})!")
-        print(f"✓ hi_hi组有效结果: {len(results_hi_hi)} 个基因")
-        print(f"✓ lo_lo组有效结果: {len(results_lo_lo)} 个基因")
-        
-        # 3. 保存完整结果 (根据策略命名)
-        print("\n3. 保存完整结果...")
-        output_files = []
-        
-        if results_hi_hi:
-            df_hi_hi = pd.DataFrame.from_dict(results_hi_hi, orient='index')
-        df_hi_hi.index.name = 'Gene'  # 为索引列命名
-        fname_hi = f'hi_hi_cox_results_{strategy}.txt'
-        df_hi_hi.to_csv(fname_hi, sep='\t')
-        output_files.append(fname_hi)
-        
-        if results_lo_lo:
-            df_lo_lo = pd.DataFrame.from_dict(results_lo_lo, orient='index')
-        df_lo_lo.index.name = 'Gene'  # 为索引列命名
-            fname_lo = f'lo_lo_cox_results_{strategy}.txt'
-            df_lo_lo.to_csv(fname_lo, sep='\t')
-            output_files.append(fname_lo)
-        
-        print(f"\n策略 '{strategy}' 执行完毕。输出文件:")
-        for file in output_files:
-            print(f"  • {file}")
+    # 2. 进行单基因Cox分析
+    default_jobs = 8
+    n_jobs = args.n_jobs if args.n_jobs and args.n_jobs > 0 else default_jobs
+    print(f"\n2. 使用 {n_jobs} 个并行任务进行单基因Cox分析 (策略: {strategy})...")
+
+    genes_to_analyze = expression_data.index[:]
+
+    results = Parallel(n_jobs=n_jobs)(
+        delayed(perform_cox_analysis)(expression_data, survival_data, gene, group_info, strategy)
+        for gene in tqdm(genes_to_analyze, desc=f"分析进度 ({strategy})")
+    )
+
+    # 处理结果
+    results_hi_hi, results_lo_lo = {}, {}
+    for gene, (result_hi, result_lo) in zip(genes_to_analyze, results):
+        if result_hi:
+            results_hi_hi[gene] = result_hi
+        if result_lo:
+            results_lo_lo[gene] = result_lo
+
+    print(f"\n分析完成 (策略: {strategy})!")
+    print(f"✓ hi_hi组有效结果: {len(results_hi_hi)} 个基因")
+    print(f"✓ lo_lo组有效结果: {len(results_lo_lo)} 个基因")
+
+    # 3. 保存完整结果 (根据策略命名)
+    print("\n3. 保存完整结果...")
+    output_files = []
+
+    if results_hi_hi:
+        df_hi_hi = pd.DataFrame.from_dict(results_hi_hi, orient='index')
+        df_hi_hi.index.name = 'Gene'
+        out_hi = output_dir / f'hi_hi_cox_results_{strategy}.txt'
+        df_hi_hi.to_csv(out_hi, sep='\t')
+        output_files.append(str(out_hi))
+
+    if results_lo_lo:
+        df_lo_lo = pd.DataFrame.from_dict(results_lo_lo, orient='index')
+        df_lo_lo.index.name = 'Gene'
+        out_lo = output_dir / f'lo_lo_cox_results_{strategy}.txt'
+        df_lo_lo.to_csv(out_lo, sep='\t')
+        output_files.append(str(out_lo))
+
+    print(f"\n策略 '{strategy}' 执行完毕。输出文件:")
+    for file in output_files:
+        print(f"  • {file}")
     
     print("\n" + "=" * 60)
     print("✅ 所有分析任务完成！")

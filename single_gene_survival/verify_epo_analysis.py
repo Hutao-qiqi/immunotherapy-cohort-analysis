@@ -4,10 +4,9 @@ import matplotlib.pyplot as plt
 from lifelines import KaplanMeierFitter, CoxPHFitter
 from lifelines.statistics import logrank_test
 import warnings
-import os
+import argparse
+from pathlib import Path
 
-# 切换到指定目录（支持绝对路径或相对路径）
-os.chdir("E:/data/changyuan/免疫队列/单基因生存分析")
 warnings.filterwarnings('ignore')
 
 # --- Matplotlib 全局美化设置 ---
@@ -19,12 +18,57 @@ plt.rcParams['axes.spines.right'] = False
 plt.style.use('seaborn-v0_8-whitegrid')
 
 
-def load_and_merge_data(gene_of_interest):
+def _default_base_dir() -> Path:
+    return Path(__file__).resolve().parent
+
+
+def _default_survival_file(base_dir: Path) -> Path:
+    return (base_dir / ".." / "survival_curves" / "updated_survival_data.txt").resolve()
+
+
+def _default_annotation_file(base_dir: Path) -> Path:
+    # Try base_dir first; fall back to survival_curves if user kept the original layout.
+    cand1 = (base_dir / "MYC_PVT1_annotation.txt").resolve()
+    if cand1.exists():
+        return cand1
+    return (base_dir / ".." / "survival_curves" / "MYC_PVT1_annotation.txt").resolve()
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Verify EPO survival analysis logic")
+    parser.add_argument(
+        "--base-dir",
+        type=Path,
+        default=_default_base_dir(),
+        help="Directory containing combined_expression_combat_corrected.txt",
+    )
+    parser.add_argument(
+        "--survival-file",
+        type=Path,
+        default=None,
+        help="Path to updated_survival_data.txt (default: ../survival_curves/updated_survival_data.txt)",
+    )
+    parser.add_argument(
+        "--annotation-file",
+        type=Path,
+        default=None,
+        help="Path to MYC_PVT1_annotation.txt (default: base-dir or ../survival_curves)",
+    )
+    parser.add_argument(
+        "--gene",
+        type=str,
+        default="EPO",
+        help="Gene symbol to verify (default: EPO)",
+    )
+    return parser.parse_args()
+
+
+def load_and_merge_data(gene_of_interest, expr_file: Path, survival_file: Path, annotation_file: Path):
     """加载所有需要的数据并合并成一个用于分析的DataFrame"""
     print("--- 步骤 1: 加载并合并数据 ---")
     try:
         # 加载表达数据 (基因在行，样本在列)
-        df_expr_raw = pd.read_csv('combined_expression_combat_corrected.txt', sep='\t', index_col=0)
+        df_expr_raw = pd.read_csv(expr_file, sep='\t', index_col=0)
         
         # 仅提取目标基因的表达数据并转置 (样本在行，基因在列)
         df_gene_expr = df_expr_raw.loc[[gene_of_interest]].T
@@ -32,13 +76,14 @@ def load_and_merge_data(gene_of_interest):
         print(f"✓ 成功加载并提取 '{gene_of_interest}' 的表达数据。")
 
         # 加载生存数据
-        df_surv = pd.read_csv('../生存曲线/updated_survival_data.txt', sep='\s+', engine='python')
+        df_surv = pd.read_csv(survival_file, sep='\s+', engine='python')
         df_surv.set_index('Sample_ID', inplace=True)
         print("✓ 成功加载生存数据。")
 
         # 加载分组注释数据
-        df_annot = pd.read_csv('../生存曲线/MYC_PVT1_annotation.txt', sep='\s+', engine='python')
-        df_annot.rename(columns={'Sample': 'Sample_ID'}, inplace=True)
+        df_annot = pd.read_csv(annotation_file, sep='\t')
+        if 'Sample' in df_annot.columns:
+            df_annot.rename(columns={'Sample': 'Sample_ID'}, inplace=True)
         df_annot.set_index('Sample_ID', inplace=True)
         print("✓ 成功加载分组注释数据。")
 
@@ -66,10 +111,16 @@ def load_and_merge_data(gene_of_interest):
 
 def main():
     """主执行函数"""
-    GENE = 'EPO'
+    args = parse_args()
+    base_dir = args.base_dir.resolve()
+    expr_file = (base_dir / 'combined_expression_combat_corrected.txt').resolve()
+    survival_file = (args.survival_file.resolve() if args.survival_file else _default_survival_file(base_dir))
+    annotation_file = (args.annotation_file.resolve() if args.annotation_file else _default_annotation_file(base_dir))
+
+    GENE = args.gene
     
     # --- 1. 数据准备 ---
-    base_data = load_and_merge_data(GENE)
+    base_data = load_and_merge_data(GENE, expr_file=expr_file, survival_file=survival_file, annotation_file=annotation_file)
     if base_data is None:
         return
 

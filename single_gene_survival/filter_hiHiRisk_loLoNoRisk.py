@@ -3,9 +3,29 @@
 
 import numpy as np
 import pandas as pd
+import argparse
+from pathlib import Path
 
-IN_PATH = r"E:\data\changyuan\免疫队列\单基因生存分析\cox_interaction_results.tsv"
-OUT_PATH = r"E:\data\changyuan\免疫队列\单基因生存分析\cox_interaction_hiHiRisk_loLoNoRisk.tsv"
+def _default_base_dir() -> Path:
+    return Path(__file__).resolve().parent
+
+
+def parse_args() -> argparse.Namespace:
+    base_dir = _default_base_dir()
+    parser = argparse.ArgumentParser(description="Filter interaction hits: hi_hi risk + lo_lo no-risk")
+    parser.add_argument(
+        "--in-path",
+        type=Path,
+        default=base_dir / "cox_interaction_results.tsv",
+        help="Input TSV (default: ./cox_interaction_results.tsv)",
+    )
+    parser.add_argument(
+        "--out-path",
+        type=Path,
+        default=(base_dir / "outputs" / "cox_interaction_hiHiRisk_loLoNoRisk.tsv"),
+        help="Output TSV (default: ./outputs/cox_interaction_hiHiRisk_loLoNoRisk.tsv)",
+    )
+    return parser.parse_args()
 
 
 def parse_ci(value):
@@ -22,7 +42,12 @@ def parse_ci(value):
 
 
 def main():
-    df = pd.read_csv(IN_PATH, sep="\t")
+    args = parse_args()
+    in_path = args.in_path.resolve()
+    out_path = args.out_path.resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    df = pd.read_csv(in_path, sep="\t")
 
     lo_ci = df["CI95_lo_lo"].apply(parse_ci)
     hi_ci = df["CI95_hi_hi"].apply(parse_ci)
@@ -67,10 +92,10 @@ def main():
         .sort_values(["q_interaction", "p_interaction"], ascending=[True, True])
     )
 
-    hits.to_csv(OUT_PATH, sep="\t", index=False)
+    hits.to_csv(out_path, sep="\t", index=False)
 
-    print(f"Input:  {IN_PATH}")
-    print(f"Output: {OUT_PATH}")
+    print(f"Input:  {in_path}")
+    print(f"Output: {out_path}")
     print(f"Hits: {hits.shape[0]}")
     print("Top 10:")
     if hits.shape[0] == 0:

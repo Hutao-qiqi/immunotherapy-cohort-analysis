@@ -19,6 +19,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from typing import Optional
+import argparse
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -27,12 +29,51 @@ from lifelines import CoxPHFitter
 from tqdm import tqdm
 
 
-BASE_DIR = r"E:\data\changyuan\免疫队列\单基因生存分析"
-EXPR_FILE = os.path.join(BASE_DIR, "combined_expression_combat_corrected.txt")
-ANNOT_FILE = os.path.join(BASE_DIR, "MYC_PVT1_annotation.txt")
-SURV_FILE = os.path.join(os.path.dirname(BASE_DIR), "生存曲线", "updated_survival_data.txt")
+def _default_base_dir() -> Path:
+    return Path(__file__).resolve().parent
 
-OUT_TSV = os.path.join(BASE_DIR, "cox_interaction_results.tsv")
+
+def _default_survival_file(base_dir: Path) -> Path:
+    return (base_dir / ".." / "survival_curves" / "updated_survival_data.txt").resolve()
+
+
+def parse_args() -> argparse.Namespace:
+    base_dir = _default_base_dir()
+    parser = argparse.ArgumentParser(description="Cox interaction-term reanalysis")
+    parser.add_argument("--base-dir", type=Path, default=base_dir, help="Directory containing expr + annotation")
+    parser.add_argument(
+        "--expr-file",
+        type=Path,
+        default=None,
+        help="Expression matrix file (default: <base-dir>/combined_expression_combat_corrected.txt)",
+    )
+    parser.add_argument(
+        "--annotation-file",
+        type=Path,
+        default=None,
+        help="Annotation file (default: <base-dir>/MYC_PVT1_annotation.txt)",
+    )
+    parser.add_argument(
+        "--survival-file",
+        type=Path,
+        default=None,
+        help="Survival file (default: ../survival_curves/updated_survival_data.txt)",
+    )
+    parser.add_argument(
+        "--out-tsv",
+        type=Path,
+        default=base_dir / "outputs" / "cox_interaction_results.tsv",
+        help="Output TSV (default: ./outputs/cox_interaction_results.tsv)",
+    )
+    parser.add_argument("--n-jobs", type=int, default=min(8, os.cpu_count() or 1), help="Parallel jobs")
+    return parser.parse_args()
+
+
+BASE_DIR = _default_base_dir()
+EXPR_FILE = (BASE_DIR / "combined_expression_combat_corrected.txt")
+ANNOT_FILE = (BASE_DIR / "MYC_PVT1_annotation.txt")
+SURV_FILE = _default_survival_file(BASE_DIR)
+OUT_TSV = (BASE_DIR / "outputs" / "cox_interaction_results.tsv")
 
 N_JOBS = min(8, os.cpu_count() or 1)
 MIN_SAMPLES = 60
@@ -74,11 +115,11 @@ class InputData:
 
 def load_inputs() -> InputData:
     if not os.path.exists(EXPR_FILE):
-        raise FileNotFoundError(EXPR_FILE)
+        raise FileNotFoundError(str(EXPR_FILE))
     if not os.path.exists(ANNOT_FILE):
-        raise FileNotFoundError(ANNOT_FILE)
+        raise FileNotFoundError(str(ANNOT_FILE))
     if not os.path.exists(SURV_FILE):
-        raise FileNotFoundError(SURV_FILE)
+        raise FileNotFoundError(str(SURV_FILE))
 
     expr = pd.read_csv(EXPR_FILE, sep="\t", index_col=0)
 
@@ -225,6 +266,17 @@ def fit_one_gene(i: int, data: InputData) -> Optional[dict]:
 
 
 def main() -> None:
+    args = parse_args()
+    global BASE_DIR, EXPR_FILE, ANNOT_FILE, SURV_FILE, OUT_TSV, N_JOBS
+
+    BASE_DIR = args.base_dir.resolve()
+    EXPR_FILE = (args.expr_file.resolve() if args.expr_file else (BASE_DIR / "combined_expression_combat_corrected.txt"))
+    ANNOT_FILE = (args.annotation_file.resolve() if args.annotation_file else (BASE_DIR / "MYC_PVT1_annotation.txt"))
+    SURV_FILE = (args.survival_file.resolve() if args.survival_file else _default_survival_file(BASE_DIR))
+    OUT_TSV = args.out_tsv.resolve()
+    OUT_TSV.parent.mkdir(parents=True, exist_ok=True)
+    N_JOBS = int(args.n_jobs)
+
     print("Loading inputs...")
     data = load_inputs()
     print(f"Matched samples: {len(data.samples)}")

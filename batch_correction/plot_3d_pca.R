@@ -5,11 +5,20 @@
 
 # --- 1. Setup ---
 
-# Install and load the plot3D package if it's not already installed.
-if (!requireNamespace("plot3D", quietly = TRUE)) {
-  install.packages("plot3D")
+# Set working directory to script location, so relative paths resolve.
+cmd <- commandArgs(trailingOnly = FALSE)
+file_arg <- cmd[grepl("^--file=", cmd)]
+if (length(file_arg) > 0) {
+  script_path <- sub("^--file=", "", file_arg[1])
+  script_dir <- normalizePath(dirname(script_path), winslash = "/", mustWork = FALSE)
+  setwd(script_dir)
 }
-library(plot3D)
+
+# Load dependency (no auto-install in repo scripts).
+if (!requireNamespace("plot3D", quietly = TRUE)) {
+  stop("Missing R package: plot3D. Install it first with install.packages('plot3D')")
+}
+suppressPackageStartupMessages(library(plot3D))
 
 cat("Successfully loaded plot3D package.\n")
 

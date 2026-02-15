@@ -13,7 +13,15 @@ library(reshape2)
 library(ggpubr)
 library(ggplot2)
 
-setwd("~/Projects/GM/")
+# Set working directory to GM root (script_dir/..), avoid absolute paths.
+cmd <- commandArgs(trailingOnly = FALSE)
+file_arg <- cmd[grepl("^--file=", cmd)]
+if (length(file_arg) > 0) {
+  script_path <- sub("^--file=", "", file_arg[1])
+  script_dir <- normalizePath(dirname(script_path), winslash = "/", mustWork = FALSE)
+  gm_root <- normalizePath(file.path(script_dir, ".."), winslash = "/", mustWork = FALSE)
+  setwd(gm_root)
+}
 
 load('results/Machine Learning/test_set.Rdata')
 load('results/Machine Learning/res.Rdata')

@@ -79,7 +79,9 @@ set.aPD1<-function(r = NULL,iciA.sigs,cell.sig){
 
 aPD1.plot<-function(r,aPD1.val,fileName = ""){
   load("../Data/scData/res.sig.names.RData")
-  fileName<-paste0("~/Desktop/CellRevisions/Figures/AutoFig/Fig5_ValCoh2.prf.",fileName,".pdf")
+  out_dir <- file.path("outputs")
+  dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+  fileName <- file.path(out_dir, paste0("Fig5_ValCoh2.prf.", fileName, ".pdf"))
   r$X<-r$res[,intersect(colnames(r$res),aPD1.val$res.sig.names)]
   pdf(fileName)
   

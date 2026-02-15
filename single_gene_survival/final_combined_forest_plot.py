@@ -9,14 +9,17 @@ from matplotlib.legend_handler import HandlerLine2D
 from matplotlib.lines import Line2D
 import matplotlib.ticker as ticker # 导入 ticker 模块
 import warnings
-import os
 import time
+import argparse
+from pathlib import Path
 
 warnings.filterwarnings('ignore')
 
-# --- 用户配置区 ---
-# 请确保您的数据文件在此目录下
-DATA_DIRECTORY = "E:/data/changyuan/免疫队列/单基因生存分析"
+# --- user config (defaults) ---
+DEFAULT_DATA_DIR = Path(__file__).resolve().parent
+DATA_DIR = DEFAULT_DATA_DIR
+OUTPUT_DIR = DEFAULT_DATA_DIR / "outputs"
+
 HIHI_FILE = 'hi_hi_cox_results_median_rank.txt'
 LOLO_FILE = 'lo_lo_cox_results_median_rank.txt'
 INTERACTION_FILE = 'cox_interaction_hiHiRisk_loLoNoRisk.tsv'
@@ -30,12 +33,21 @@ SPECIFIC_GENE_LIST = [
 # --- 配置区结束 ---
 
 
-# 尝试切换目录
-try:
-    os.chdir(DATA_DIRECTORY)
-    print(f"✓ 成功切换到目录: {os.getcwd()}")
-except FileNotFoundError:
-    print(f"✗ 警告: 目录 '{DATA_DIRECTORY}' 不存在。请确保数据文件与脚本在同一目录下。")
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Combined forest plot (hi_hi vs lo_lo + interaction)")
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=DEFAULT_DATA_DIR,
+        help="Directory containing input result files",
+    )
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=DEFAULT_DATA_DIR / "outputs",
+        help="Output directory (default: ./outputs)",
+    )
+    return parser.parse_args()
 
 # 尝试应用SciencePlots样式
 try:
@@ -81,9 +93,9 @@ def load_and_process_data():
     """数据加载与处理"""
     print("\n" + "=" * 70 + "\n1. 数据加载与处理...\n" + "=" * 70)
     try:
-        hihi_data = pd.read_csv(HIHI_FILE, sep='\t', index_col=0)
-        lolo_data = pd.read_csv(LOLO_FILE, sep='\t', index_col=0)
-        interaction = pd.read_csv(INTERACTION_FILE, sep='\t')
+        hihi_data = pd.read_csv(DATA_DIR / HIHI_FILE, sep='\t', index_col=0)
+        lolo_data = pd.read_csv(DATA_DIR / LOLO_FILE, sep='\t', index_col=0)
+        interaction = pd.read_csv(DATA_DIR / INTERACTION_FILE, sep='\t')
     except FileNotFoundError as e:
         print(f"✗ 错误：找不到数据文件 {e.filename}。请检查文件名和路径。")
         return None, None, None
@@ -284,6 +296,15 @@ def create_combined_forest_plot(data, gene_list, vi_df):
 
 def main():
     """主函数"""
+    global DATA_DIR, OUTPUT_DIR
+    args = parse_args()
+    DATA_DIR = args.data_dir.resolve()
+    OUTPUT_DIR = args.out_dir.resolve()
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    print(f"✓ Using data dir: {DATA_DIR}")
+    print(f"✓ Using output dir: {OUTPUT_DIR}")
+
     data, gene_list, hrr_df = load_and_process_data()
     if data is None:
         print("✗ 数据处理失败，程序终止。")
@@ -293,8 +314,8 @@ def main():
     
     timestamp = int(time.time())
     output_base = f'Final_Combined_Forest_Plot_{timestamp}'
-    plt.savefig(f'{output_base}.png', dpi=300, bbox_inches='tight', facecolor='white')
-    plt.savefig(f'{output_base}.pdf', bbox_inches='tight', facecolor='white')
+    plt.savefig(OUTPUT_DIR / f'{output_base}.png', dpi=300, bbox_inches='tight', facecolor='white')
+    plt.savefig(OUTPUT_DIR / f'{output_base}.pdf', bbox_inches='tight', facecolor='white')
     
     print("\n" + "=" * 70 + "\n✓ 最终版整合式森林图生成成功！\n" + "=" * 70)
     print(f"   - 文件已保存为 {output_base}.png 和 {output_base}.pdf")

@@ -2,8 +2,22 @@
 # -*- coding: utf-8 -*-
 
 import pandas as pd
+import argparse
+from pathlib import Path
 
-IN_PATH = r"E:\data\changyuan\免疫队列\单基因生存分析\cox_interaction_results.tsv"
+def _default_in_path() -> Path:
+    return (Path(__file__).resolve().parent / "outputs" / "cox_interaction_results.tsv")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Query interaction-term Cox results for a fixed gene list")
+    parser.add_argument(
+        "--in-path",
+        type=Path,
+        default=_default_in_path(),
+        help="Input TSV (default: ./outputs/cox_interaction_results.tsv)",
+    )
+    return parser.parse_args()
 
 GENES = [
     "FOLH1",
@@ -18,7 +32,9 @@ GENES = [
 
 
 def main():
-    df = pd.read_csv(IN_PATH, sep="\t")
+    args = parse_args()
+    in_path = args.in_path.resolve()
+    df = pd.read_csv(in_path, sep="\t")
     sub = df[df["Gene"].isin(GENES)].copy()
 
     # Keep order same as figure
@@ -40,7 +56,7 @@ def main():
     missing = [g for g in GENES if g not in set(sub["Gene"])]
 
     print("Interaction-term Cox results for HRR figure genes")
-    print("Input:", IN_PATH)
+    print("Input:", in_path)
     if missing:
         print("Missing (no valid model fit):", ", ".join(missing))
     print(sub[cols].to_string(index=False))

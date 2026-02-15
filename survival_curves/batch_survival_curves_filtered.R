@@ -1,18 +1,33 @@
-# --- Load required libraries ---
-# If a library is not installed, the script will prompt for installation.
-if (!requireNamespace("tidyverse", quietly = TRUE)) install.packages("tidyverse")
-if (!requireNamespace("survival", quietly = TRUE)) install.packages("survival")
-if (!requireNamespace("survminer", quietly = TRUE)) install.packages("survminer")
-if (!requireNamespace("tictoc", quietly = TRUE)) install.packages("tictoc")
-if (!requireNamespace("progress", quietly = TRUE)) install.packages("progress")
-if (!requireNamespace("broom", quietly = TRUE)) install.packages("broom")
+# --- Setup working directory (script location) ---
+cmd <- commandArgs(trailingOnly = FALSE)
+file_arg <- cmd[grepl("^--file=", cmd)]
+if (length(file_arg) > 0) {
+  script_path <- sub("^--file=", "", file_arg[1])
+  script_dir <- normalizePath(dirname(script_path), winslash = "/", mustWork = FALSE)
+  setwd(script_dir)
+}
 
-library(tidyverse)
-library(survival)
-library(survminer)
-library(tictoc)
-library(progress)
-library(broom)
+# --- Load required libraries (no auto-install) ---
+packages <- c("tidyverse", "survival", "survminer", "tictoc", "progress", "broom")
+missing <- packages[!vapply(packages, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing) > 0) {
+  stop(
+    sprintf(
+      "Missing R packages: %s\nInstall them first, e.g. install.packages(c(%s))",
+      paste(missing, collapse = ", "),
+      paste(sprintf("'%s'", missing), collapse = ", ")
+    )
+  )
+}
+
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(survival)
+  library(survminer)
+  library(tictoc)
+  library(progress)
+  library(broom)
+})
 
 
 #' Calculate p-value for a specific gene within a specific group
@@ -163,7 +178,7 @@ main <- function() {
   expression_file <- 'combined_expression_combat_corrected.txt'
   survival_file <- 'updated_survival_data.txt'
   annotation_file <- 'MYC_PVT1_annotation.txt'
-  output_dir <- 'survival_plots_filtered'
+  output_dir <- file.path("outputs", "survival_plots_filtered")
   results_file <- 'filtered_genes_results.tsv' # Use .tsv for tab-separated
   
   # --- Timer initialization ---

@@ -18,15 +18,41 @@ from __future__ import annotations
 
 import os
 from typing import Dict, Tuple
+import argparse
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from lifelines import CoxPHFitter
 
-BASE_DIR = r"E:\data\changyuan\免疫队列\单基因生存分析"
-EXPR_FILE = os.path.join(BASE_DIR, "combined_expression_combat_corrected.txt")
-ANNOT_FILE = os.path.join(BASE_DIR, "MYC_PVT1_annotation.txt")
-SURV_FILE = os.path.join(os.path.dirname(BASE_DIR), "生存曲线", "updated_survival_data.txt")
+def _default_base_dir() -> Path:
+    return Path(__file__).resolve().parent
+
+
+def _default_survival_file(base_dir: Path) -> Path:
+    return (base_dir / ".." / "survival_curves" / "updated_survival_data.txt").resolve()
+
+
+def parse_args() -> argparse.Namespace:
+    base_dir = _default_base_dir()
+    parser = argparse.ArgumentParser(description="Interaction-term Cox for a small gene list")
+    parser.add_argument("--base-dir", type=Path, default=base_dir, help="Directory containing expr + annotation")
+    parser.add_argument("--expr-file", type=Path, default=None, help="Expression file path")
+    parser.add_argument("--annotation-file", type=Path, default=None, help="Annotation file path")
+    parser.add_argument("--survival-file", type=Path, default=None, help="Survival file path")
+    parser.add_argument(
+        "--out-tsv",
+        type=Path,
+        default=base_dir / "outputs" / "cox_interaction_hrr_genes_hilo_within_status.tsv",
+        help="Output TSV (default: ./outputs/...)",
+    )
+    return parser.parse_args()
+
+
+BASE_DIR = _default_base_dir()
+EXPR_FILE = str((BASE_DIR / "combined_expression_combat_corrected.txt").resolve())
+ANNOT_FILE = str((BASE_DIR / "MYC_PVT1_annotation.txt").resolve())
+SURV_FILE = str(_default_survival_file(BASE_DIR))
 
 GENES = [
     "FOLH1",
@@ -39,7 +65,7 @@ GENES = [
     "CDK6",
 ]
 
-OUT_TSV = os.path.join(BASE_DIR, "cox_interaction_hrr_genes_hilo_within_status.tsv")
+OUT_TSV = str((BASE_DIR / "outputs" / "cox_interaction_hrr_genes_hilo_within_status.tsv").resolve())
 
 MIN_SAMPLES = 40
 MIN_EVENTS = 8
@@ -147,6 +173,16 @@ def fit_gene(expr: pd.DataFrame, base: pd.DataFrame, gene: str) -> Dict[str, obj
 
 
 def main() -> None:
+    args = parse_args()
+    global BASE_DIR, EXPR_FILE, ANNOT_FILE, SURV_FILE, OUT_TSV
+    BASE_DIR = str(args.base_dir.resolve())
+    base_dir_p = Path(BASE_DIR)
+    EXPR_FILE = str((args.expr_file.resolve() if args.expr_file else (base_dir_p / "combined_expression_combat_corrected.txt")))
+    ANNOT_FILE = str((args.annotation_file.resolve() if args.annotation_file else (base_dir_p / "MYC_PVT1_annotation.txt")))
+    SURV_FILE = str((args.survival_file.resolve() if args.survival_file else _default_survival_file(base_dir_p)))
+    OUT_TSV = str(args.out_tsv.resolve())
+    Path(OUT_TSV).parent.mkdir(parents=True, exist_ok=True)
+
     expr, _status_series, base = load_data()
 
     rows = [fit_gene(expr, base, g) for g in GENES]

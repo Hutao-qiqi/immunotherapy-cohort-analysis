@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
 import time
 from dataclasses import dataclass
+import argparse
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -12,17 +13,50 @@ import matplotlib.gridspec as gridspec
 from lifelines import CoxPHFitter
 
 
-BASE_DIR = r"E:/data/changyuan/免疫队列/单基因生存分析"
-EXPR_FILE = os.path.join(BASE_DIR, "combined_expression_combat_corrected.txt")
-SURV_FILE = r"E:/data/changyuan/免疫队列/生存曲线/updated_survival_data.txt"
-ANNOT_FILE = os.path.join(BASE_DIR, "MYC_PVT1_annotation.txt")
+def _default_base_dir() -> Path:
+    return Path(__file__).resolve().parent
+
+
+def _default_survival_file(base_dir: Path) -> Path:
+    return (base_dir / ".." / "survival_curves" / "updated_survival_data.txt").resolve()
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Forest-plot-like summary for selected genes")
+    parser.add_argument(
+        "--base-dir",
+        type=Path,
+        default=_default_base_dir(),
+        help="Directory containing expression + annotation files",
+    )
+    parser.add_argument(
+        "--expr-file",
+        type=Path,
+        default=None,
+        help="Expression matrix file (default: <base-dir>/combined_expression_combat_corrected.txt)",
+    )
+    parser.add_argument(
+        "--survival-file",
+        type=Path,
+        default=None,
+        help="Survival file (default: ../survival_curves/updated_survival_data.txt)",
+    )
+    parser.add_argument(
+        "--annotation-file",
+        type=Path,
+        default=None,
+        help="Annotation file (default: <base-dir>/MYC_PVT1_annotation.txt)",
+    )
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=_default_base_dir() / "outputs",
+        help="Output directory (default: ./outputs)",
+    )
+    return parser.parse_args()
 
 # Interaction-significant (q<0.05) and immune / immunotherapy-adjacent candidates
 GENES = ["CDHR2", "PROZ", "SERPINA1", "VTN", "CLEC1B", "CEACAM5", "HRG", "FCN3"]
-
-OUT_PDF = os.path.join(BASE_DIR, "forest_plot_like.pdf")
-OUT_PNG = os.path.join(BASE_DIR, f"forest_plot_like_{int(time.time())}.png")
-OUT_TSV = os.path.join(BASE_DIR, "forest_plot_like_interaction_stats.tsv")
 
 
 @dataclass
@@ -43,15 +77,15 @@ def bh_fdr(p_values: np.ndarray) -> np.ndarray:
     return out
 
 
-def load_inputs() -> CoxInputs:
-    expr = pd.read_csv(EXPR_FILE, sep="\t", index_col=0)
+def load_inputs(expr_file: Path, survival_file: Path, annotation_file: Path) -> CoxInputs:
+    expr = pd.read_csv(expr_file, sep="\t", index_col=0)
 
-    surv = pd.read_csv(SURV_FILE, sep=r"\s+", engine="python")
+    surv = pd.read_csv(survival_file, sep=r"\s+", engine="python")
     if "Sample_ID" not in surv.columns:
         raise ValueError("Survival file must contain column: Sample_ID")
     surv = surv.set_index("Sample_ID")
 
-    annot = pd.read_csv(ANNOT_FILE, sep="\t")
+    annot = pd.read_csv(annotation_file, sep="\t")
     if "Sample" not in annot.columns or "MYC_PVT1_Status" not in annot.columns:
         raise ValueError("MYC_PVT1_annotation.txt must contain columns: Sample, MYC_PVT1_Status")
     annot = annot.set_index("Sample")
@@ -171,7 +205,7 @@ def fit_interaction_for_gene(inputs: CoxInputs, gene: str) -> dict:
     }
 
 
-def plot_forest(results: pd.DataFrame) -> None:
+def plot_forest(results: pd.DataFrame, out_pdf: Path, out_png: Path) -> None:
     plt.rcParams["figure.dpi"] = 300
     plt.rcParams["savefig.dpi"] = 300
     plt.rcParams["axes.unicode_minus"] = False
@@ -245,13 +279,25 @@ def plot_forest(results: pd.DataFrame) -> None:
     ax_plot.scatter([], [], color=color_hi, marker="s", s=40, label="hi_hi")
     ax_plot.legend(loc="lower right", frameon=False, fontsize=10)
 
-    fig.savefig(OUT_PDF, bbox_inches="tight", facecolor="white")
-    fig.savefig(OUT_PNG, bbox_inches="tight", facecolor="white")
+    fig.savefig(out_pdf, bbox_inches="tight", facecolor="white")
+    fig.savefig(out_png, bbox_inches="tight", facecolor="white")
 
 
 def main() -> None:
-    os.chdir(BASE_DIR)
-    inputs = load_inputs()
+    args = parse_args()
+    base_dir = args.base_dir.resolve()
+    out_dir = args.out_dir.resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    expr_file = (args.expr_file.resolve() if args.expr_file else (base_dir / "combined_expression_combat_corrected.txt"))
+    survival_file = (args.survival_file.resolve() if args.survival_file else _default_survival_file(base_dir))
+    annotation_file = (args.annotation_file.resolve() if args.annotation_file else (base_dir / "MYC_PVT1_annotation.txt"))
+
+    out_pdf = out_dir / "forest_plot_like.pdf"
+    out_png = out_dir / f"forest_plot_like_{int(time.time())}.png"
+    out_tsv = out_dir / "forest_plot_like_interaction_stats.tsv"
+
+    inputs = load_inputs(expr_file=expr_file, survival_file=survival_file, annotation_file=annotation_file)
 
     rows = []
     for g in GENES:
@@ -261,13 +307,13 @@ def main() -> None:
     res["q_interaction"] = bh_fdr(res["p_interaction"].values)
     res = res.sort_values(["q_interaction", "p_interaction"], ascending=[True, True]).reset_index(drop=True)
 
-    res.to_csv(OUT_TSV, sep="\t", index=False)
-    plot_forest(res)
+    res.to_csv(out_tsv, sep="\t", index=False)
+    plot_forest(res, out_pdf=out_pdf, out_png=out_png)
 
     print("✓ forest_plot_like regenerated")
-    print("  - PDF:", OUT_PDF)
-    print("  - PNG:", OUT_PNG)
-    print("  - TSV:", OUT_TSV)
+    print("  - PDF:", out_pdf)
+    print("  - PNG:", out_png)
+    print("  - TSV:", out_tsv)
 
 
 if __name__ == "__main__":
