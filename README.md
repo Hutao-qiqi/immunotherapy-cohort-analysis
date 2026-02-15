@@ -4,7 +4,7 @@ This repository contains analysis scripts used for a multi-cohort immunotherapy 
 
 - Benefit score validation (IMvigor210-trained logistic model applied to external cohorts)
 - Pan-cancer immune analyses and visualizations (bubble heatmap, trend line plot, percent barplot)
-- Additional supporting scripts that are part of the full analysis pipeline (see `extra/`)
+- Additional supporting scripts that are part of the full analysis pipeline (organized by function)
 
 ## Repository structure
 
@@ -12,7 +12,11 @@ This repository contains analysis scripts used for a multi-cohort immunotherapy 
 - `bubble_heatmap/`, `trend_line_plot/`, `percent_barplot/`: visualization modules
 - `wilcoxon_subtype/`, `cox_uni_multi/`: statistical analysis modules
 - `utils/`: shared utilities
-- `extra/`: supporting modules/scripts used in the paper's full analysis pipeline (single-gene survival, batch correction, survival curves, fig7/GM, etc.)
+- `data_processing/`: general data processing helpers (merging clinical info, intersections, filtering, etc.)
+- `single_gene_survival/`: single-gene survival analyses and related plots
+- `batch_correction/`: batch correction utilities
+- `survival_curves/`: survival curve plotting utilities
+- `fig7_gm/`: scripts used for Figure 7 (GM module)
 
 ## Notes
 
